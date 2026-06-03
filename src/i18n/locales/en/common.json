@@ -1,0 +1,6 @@
+{
+  "toasts": {
+    "pdf_error": "PDF generation failed",
+    "pdf_error_description": "Unable to generate the PDF. Please try again."
+  }
+}

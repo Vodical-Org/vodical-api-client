@@ -93,10 +93,10 @@ paths:
 
     post:
       tags: [Templates]
-      summary: Create a new template (AI-generated)
+      summary: Create a new template (AI-generated, HDS-hosted)
       description: |
-        Creates a new template. The HTML body is AI-generated server-side from
-        the high-level inputs you provide.
+        Creates a new template. The HTML body is generated server-side by an
+        internal HDS-hosted AI from the high-level inputs you provide.
 
         Required scope: `templates:write`
       operationId: createTemplate
@@ -179,12 +179,13 @@ paths:
         document either as HTML (recommended) or PDF (basic fallback).
 
         Pipeline:
-          1. Audio → AssemblyAI transcription (FR by default), polled up to 5 min.
+          1. Audio → speech-to-text via internal HDS-hosted AI (FR by default),
+             processed up to 5 min.
           2. Image / Document → text via the internal extract-text-source
              function (OCR for images, native text for PDFs).
           3. Text → used as-is.
-          4. Combined text + template instructions → OpenAI GPT-4o-mini with
-             a strict prompt that forbids extrapolation.
+          4. Combined text + template instructions → internal HDS-hosted
+             generative AI with a strict prompt that forbids extrapolation.
           5. AI returns HTML using a restricted set of tags.
           6. Date tokens are replaced with the current localized date.
 
@@ -326,7 +327,7 @@ components:
           schema: { $ref: "#/components/schemas/Error" }
           examples:
             stt-not-configured: { value: { error: "Audio transcription not configured" } }
-            openai-error:       { value: { error: "OpenAI API error: ..." } }
+            ai-error:           { value: { error: "AI provider error: ..." } }
             generic:            { value: { error: "Generation failed" } }
 
   # ---------------------------------------------------------------------------
@@ -423,8 +424,8 @@ components:
           description: Generated HTML body (may contain variable placeholders and date tokens).
         source:
           type: string
-          description: Provider that generated the template (informational).
-          example: openai
+          description: Informational identifier of the AI infrastructure (HDS-hosted) that generated the template.
+          example: internal-hds-ai
         createdAt:  { type: string, format: date-time }
 
     # Document generation -----------------------------------------------------

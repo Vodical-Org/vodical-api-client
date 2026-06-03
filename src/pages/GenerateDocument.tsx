@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { toast } from 'sonner';
 import { generatePDF } from '../utils/pdfGenerator';
+import { renderTipTapWithUnifiedStyles } from '../utils/tiptap-unified-renderer';
 
 interface Props { apiKey: string; baseUrl: string; }
 
@@ -172,12 +173,20 @@ export function GenerateDocument({ apiKey, baseUrl }: Props) {
         </div>
       )}
 
-      {previewHtml && (
-        <div className="mt-6 bg-white rounded-xl border border-slate-200 p-6">
-          <h3 className="text-sm font-semibold text-slate-700 mb-3 uppercase tracking-wide">Generated Document Preview</h3>
-          <div className="border border-slate-200 rounded-lg p-6 prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: previewHtml }} />
-        </div>
-      )}
+      {previewHtml && <DocumentPreview html={previewHtml} />}
+    </div>
+  );
+}
+
+function DocumentPreview({ html }: { html: string }) {
+  const styledHtml = useMemo(() => renderTipTapWithUnifiedStyles(html), [html]);
+  return (
+    <div className="mt-6 bg-white rounded-xl border border-slate-200 p-6">
+      <h3 className="text-sm font-semibold text-slate-700 mb-3 uppercase tracking-wide">Generated Document Preview</h3>
+      <div
+        className="border border-slate-200 rounded-lg p-6 max-w-none"
+        dangerouslySetInnerHTML={{ __html: styledHtml }}
+      />
     </div>
   );
 }

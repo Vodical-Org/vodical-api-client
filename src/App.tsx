@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Toaster } from 'sonner';
 import { Setup } from './pages/Setup';
 import { CreateTemplate } from './pages/CreateTemplate';
@@ -6,10 +6,25 @@ import { GenerateDocument } from './pages/GenerateDocument';
 
 type Page = 'setup' | 'templates' | 'generate';
 
+const PAGE_STORAGE_KEY = 'vodical_page';
+const VALID_PAGES: Page[] = ['setup', 'templates', 'generate'];
+
+function loadInitialPage(): Page {
+  const stored = localStorage.getItem(PAGE_STORAGE_KEY);
+  return VALID_PAGES.includes(stored as Page) ? (stored as Page) : 'setup';
+}
+
 export default function App() {
-  const [page, setPage] = useState<Page>('setup');
+  const [page, setPage] = useState<Page>(loadInitialPage);
   const [apiKey, setApiKey] = useState(localStorage.getItem('vodical_api_key') || '');
   const [baseUrl, setBaseUrl] = useState(localStorage.getItem('vodical_base_url') || 'https://your-instance.supabase.co/functions/v1');
+
+  // Persiste la page courante : sans cela, un rechargement complet
+  // (Vite HMR full-reload après cold-start du Web Worker, refresh manuel, etc.)
+  // ferait perdre la navigation et renverrait l'utilisateur sur "setup".
+  useEffect(() => {
+    localStorage.setItem(PAGE_STORAGE_KEY, page);
+  }, [page]);
 
   const handleSetup = (key: string, url: string) => {
     setApiKey(key);

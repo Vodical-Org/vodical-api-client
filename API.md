@@ -221,7 +221,7 @@ Content-Type: application/json
   "templateId": "b562fdfe-4a0a-5680-c971-f966b75e3522",
   "name": "Compte-rendu de consultation",
   "html": "<h2>Compte-rendu</h2><p>Date : <span data-vodical-token=\"date\"></span></p>...",
-  "source": "openai",
+  "source": "internal-hds-ai",
   "createdAt": "2026-06-03T13:14:33.123Z"
 }
 ```
@@ -330,11 +330,11 @@ type InputItem =
 
 #### Behind the scenes
 
-1. **Audio** → AssemblyAI transcription (FR by default), polled up to 5 min.
+1. **Audio** → speech-to-text via internal HDS-hosted AI (FR by default), processed up to 5 min.
 2. **Image / Document** → text via the internal `extract-text-source` function (OCR / native PDF text).
 3. **Text** → used as-is.
 4. All extracted texts are concatenated as `### Source 1 (audio):\n...` separated by `---`.
-5. Combined text + template instructions → **OpenAI GPT-4o-mini** with a strict prompt (no extrapolation).
+5. Combined text + template instructions → **internal HDS-hosted generative AI** with a strict prompt (no extrapolation).
 6. AI returns HTML with `<h4>`, `<p>`, `<ul>`, `<li>`, `<strong>`, `<em>` only.
 7. Date tokens are replaced with the current localized date.
 
@@ -396,8 +396,8 @@ X-Document-Id: {documentId}
 | `403` | `Insufficient permissions. Required scope: documents:write` | Missing scope |
 | `403` | `Template belongs to a different user` | Cross-user access |
 | `404` | `Template {id} does not exist` | Wrong UUID |
-| `500` | `Audio transcription not configured` | Missing `ASSEMBLYAI_API_KEY` |
-| `500` | `OpenAI API error: ...` | OpenAI error |
+| `500` | `Audio transcription not configured` | STT provider not configured |
+| `500` | `AI provider error: ...` | AI provider error |
 
 > 💡 Even when generation **fails**, a row is created in `document_requests` with `status: 'FAILED'` for auditing.
 
@@ -474,7 +474,7 @@ Replaced server-side with the current localized date (`03 juin 2026` for `fr`, `
 4. **No `<html>` / `<head>` / `<body>` wrappers** — fragment only.
 5. **UTF-8 encoded.**
 6. **Date tokens already substituted.**
-7. **Non-deterministic output** (GPT temperature > 0) — same input ≠ byte-identical output.
+7. **Non-deterministic output** (AI temperature > 0) — same input ≠ byte-identical output.
 
 ---
 
@@ -482,11 +482,11 @@ Replaced server-side with the current localized date (`03 juin 2026` for `fr`, `
 
 | Resource | Soft limit | Notes |
 |---|---|---|
-| Single audio file | ~25 MB encoded, ~5 min | AssemblyAI cap. |
+| Single audio file | ~25 MB encoded, ~5 min | STT provider cap. |
 | Single image | ~10 MB | OCR quality drops on very large scans. |
 | Single PDF | ~10 MB | |
 | Total request body | ~32 MB | Supabase Edge Function limit. |
-| Inputs per request | No hard cap | Beware the OpenAI context window (~128 K tokens). |
+| Inputs per request | No hard cap | Beware the AI context window (~128 K tokens). |
 | Generation time | Up to ~6 min | Mostly bound by audio transcription. |
 | Output tokens | 4 000 (~16 KB HTML) | `max_completion_tokens` hard-coded. |
 
@@ -499,7 +499,7 @@ Per-user quotas (concurrent jobs, monthly generations) depend on the Vodical pla
 - Endpoints under `/api-v1-*` are **stable**. Breaking changes only ship under `/api-v2-*`, with v1 supported for ≥ 6 months after v2.
 - Legacy single-input format (`inputType` + `text`/`audio`/`file`) is **deprecated** and may be removed in v2 — migrate to `inputs[]` now.
 - HTML output schema (allowed tags, variable attributes, date tokens) is part of the public contract.
-- The `source` field in `POST /api-v1-templates` (currently `"openai"`) may change as more providers are added — treat it as informational.
+- The `source` field in `POST /api-v1-templates` is informational and may change as the internal AI infrastructure evolves — treat it as informational.
 - The server-side PDF output (`outputFormat: "pdf"`) is **best-effort** — it is **not** part of the stable contract. Always prefer `html` + client-side rendering.
 
 ---
