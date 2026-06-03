@@ -61,7 +61,7 @@ export function GenerateDocument({ apiKey, baseUrl }: Props) {
         setLoading(false); setStatus(''); return;
       }
 
-      setStatus('Processing with AI...');
+      setStatus('Processing...');
       const res = await fetch(`${baseUrl}/api-v1-generate`, {
         method: 'POST',
         headers: {
