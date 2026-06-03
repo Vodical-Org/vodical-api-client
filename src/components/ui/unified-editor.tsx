@@ -66,7 +66,7 @@ export function UnifiedEditor({
   className,
   contentClassName,
   autoFocus = false,
-  fontSize = '16px',
+  fontSize,
   onEditorReady,
 }: UnifiedEditorProps) {
   const isEditable = editable ?? !!onChange;
@@ -108,12 +108,8 @@ export function UnifiedEditor({
     autofocus: autoFocus,
     editorProps: {
       attributes: {
-        class: cn(
-          'w-full max-w-none focus:outline-none',
-          '[&>ul]:list-disc [&>ul]:pl-6 [&>ol]:list-decimal [&>ol]:pl-6',
-          '[&>p]:mb-2 [&>p]:leading-relaxed',
-        ),
-        style: `font-size: ${fontSize};`,
+        class: 'w-full max-w-none focus:outline-none',
+        ...(fontSize ? { style: `font-size: ${fontSize};` } : {}),
       },
     },
     onUpdate: ({ editor: e }) => {
