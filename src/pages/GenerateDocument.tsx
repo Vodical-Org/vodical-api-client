@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { generatePDF } from '../utils/pdfGenerator';
-import { renderTipTapWithUnifiedStyles } from '../utils/tiptap-unified-renderer';
+import { UnifiedEditor } from '../components/ui/unified-editor';
 
 interface Props { apiKey: string; baseUrl: string; }
 
@@ -12,9 +12,11 @@ export function GenerateDocument({ apiKey, baseUrl }: Props) {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [documentFile, setDocumentFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [status, setStatus] = useState('');
   const [templates, setTemplates] = useState<any[]>([]);
-  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [editedHtml, setEditedHtml] = useState<string | null>(null);
+  const [documentId, setDocumentId] = useState<string | null>(null);
   const [sources, setSources] = useState<Record<string, string> | null>(null);
 
   useEffect(() => {
@@ -40,7 +42,8 @@ export function GenerateDocument({ apiKey, baseUrl }: Props) {
 
     setLoading(true);
     setStatus('Preparing inputs...');
-    setPreviewHtml(null);
+    setEditedHtml(null);
+    setDocumentId(null);
     setSources(null);
 
     try {
@@ -81,22 +84,31 @@ export function GenerateDocument({ apiKey, baseUrl }: Props) {
       const html = data.html;
       if (!html) throw new Error('No HTML returned');
 
-      setPreviewHtml(html);
+      setEditedHtml(html);
+      setDocumentId(data.documentId || null);
       setSources(data.sources || null);
-
-      // Convert HTML to PDF using the same pdf-lib + Web Worker pipeline as the
-      // main Vodical web app — guarantees 1:1 visual parity with the in-app exports.
-      setStatus('Converting to PDF...');
-      await generatePDF({
-        content: html,
-        fileName: `document-${data.documentId || Date.now()}.pdf`,
-      });
-      toast.success('PDF generated and downloaded!');
+      toast.success('Document generated! You can now edit it before exporting.');
     } catch (err: any) {
       toast.error(err.message);
     } finally {
       setLoading(false);
       setStatus('');
+    }
+  };
+
+  const handleExportPdf = async () => {
+    if (!editedHtml) return;
+    setExporting(true);
+    try {
+      await generatePDF({
+        content: editedHtml,
+        fileName: `document-${documentId || Date.now()}.pdf`,
+      });
+      toast.success('PDF exported!');
+    } catch (err: any) {
+      toast.error(err.message || 'PDF export failed');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -155,7 +167,7 @@ export function GenerateDocument({ apiKey, baseUrl }: Props) {
         </div>
 
         <button onClick={handleGenerate} disabled={loading} className="w-full bg-primary text-white py-3 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-primary-600 transition-colors">
-          {loading ? status || 'Processing...' : 'Generate PDF'}
+          {loading ? status || 'Processing...' : 'Generate Document'}
         </button>
       </div>
 
@@ -173,20 +185,38 @@ export function GenerateDocument({ apiKey, baseUrl }: Props) {
         </div>
       )}
 
-      {previewHtml && <DocumentPreview html={previewHtml} />}
-    </div>
-  );
-}
+      {editedHtml !== null && (
+        <div className="mt-6 bg-white rounded-xl border border-slate-200 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">
+              Generated Document (editable)
+            </h3>
+            <button
+              onClick={handleExportPdf}
+              disabled={exporting}
+              className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-primary-600 transition-colors flex items-center gap-2"
+            >
+              {exporting ? (
+                <>
+                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                  Exporting...
+                </>
+              ) : (
+                <>📄 Export to PDF</>
+              )}
+            </button>
+          </div>
 
-function DocumentPreview({ html }: { html: string }) {
-  const styledHtml = useMemo(() => renderTipTapWithUnifiedStyles(html), [html]);
-  return (
-    <div className="mt-6 bg-white rounded-xl border border-slate-200 p-6">
-      <h3 className="text-sm font-semibold text-slate-700 mb-3 uppercase tracking-wide">Generated Document Preview</h3>
-      <div
-        className="border border-slate-200 rounded-lg p-6 max-w-none"
-        dangerouslySetInnerHTML={{ __html: styledHtml }}
-      />
+          <UnifiedEditor
+            content={editedHtml}
+            onChange={setEditedHtml}
+            editable
+            toolbar="full"
+            className="min-h-[600px]"
+            contentClassName="min-h-[500px]"
+          />
+        </div>
+      )}
     </div>
   );
 }
