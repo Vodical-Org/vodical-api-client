@@ -75,11 +75,30 @@ interface PlacedRun {
 }
 
 interface Line {
+  kind?: 'line';
   runs: PlacedRun[];
   height: number;
   ascent: number;
   spaceBefore: number;
 }
+
+interface TableCellRender {
+  lines: Line[];
+  isHeader: boolean;
+  contentHeight: number;
+}
+
+interface TableRowRender {
+  kind: 'table-row';
+  height: number;
+  spaceBefore: number;
+  left: number; // décalage depuis bord gauche de la boîte (= indentPx)
+  totalWidth: number;
+  columnWidths: number[];
+  cells: TableCellRender[];
+}
+
+type RenderItem = Line | TableRowRender;
 
 interface LayoutCtx {
   fonts: PdfFontRegistry;
@@ -87,6 +106,12 @@ interface LayoutCtx {
   defaultFontSize: number;
   width: number;
 }
+
+const TABLE_CELL_PADDING = 4; // pt
+const TABLE_BORDER_THICKNESS = 0.5;
+const TABLE_BORDER_COLOR = rgb(212 / 255, 212 / 255, 212 / 255);
+const TABLE_HEADER_BG = rgb(245 / 255, 245 / 255, 245 / 255);
+const TABLE_VERTICAL_MARGIN = 6; // pt avant/après tableau
 
 function hardBreakWord(
   text: string,
@@ -253,10 +278,70 @@ function layoutOneBlock(block: Block, ctx: LayoutCtx, notFirst: boolean): Line[]
   return lines;
 }
 
-function layoutBlocks(blocks: Block[], ctx: LayoutCtx): Line[] {
-  const out: Line[] = [];
-  blocks.forEach((block, i) => out.push(...layoutOneBlock(block, ctx, i > 0)));
+function layoutTable(block: Block, ctx: LayoutCtx, notFirst: boolean): TableRowRender[] {
+  if (!block.table) return [];
+  const { rows, columnCount } = block.table;
+  const tableLeft = block.indentPx;
+  const totalWidth = Math.max(40, ctx.width - tableLeft);
+  // Largeurs équiréparties
+  const colWidth = totalWidth / columnCount;
+  const columnWidths = Array.from({ length: columnCount }, () => colWidth);
+
+  const out: TableRowRender[] = [];
+  rows.forEach((row, rowIdx) => {
+    // Compléter les cellules manquantes par des vides pour rester aligné
+    const cells: TableCellRender[] = [];
+    let maxContent = 0;
+    for (let i = 0; i < columnCount; i += 1) {
+      const cell = row.cells[i];
+      const innerWidth = Math.max(10, columnWidths[i] - 2 * TABLE_CELL_PADDING);
+      if (!cell) {
+        cells.push({ lines: [], isHeader: false, contentHeight: 0 });
+        continue;
+      }
+      const cellLines = layoutBlocksInternal(cell.blocks, {
+        fonts: ctx.fonts,
+        defaultFamily: ctx.defaultFamily,
+        defaultFontSize: ctx.defaultFontSize,
+        width: innerWidth,
+      }).filter((it): it is Line => (it as TableRowRender).kind !== 'table-row');
+      const content = cellLines.reduce((s, l) => s + l.spaceBefore + l.height, 0);
+      if (content > maxContent) maxContent = content;
+      cells.push({ lines: cellLines, isHeader: cell.isHeader, contentHeight: content });
+    }
+    const rowHeight = maxContent + 2 * TABLE_CELL_PADDING;
+    out.push({
+      kind: 'table-row',
+      height: rowHeight,
+      spaceBefore: rowIdx === 0 ? (notFirst ? TABLE_VERTICAL_MARGIN : 0) : 0,
+      left: tableLeft,
+      totalWidth,
+      columnWidths,
+      cells,
+    });
+  });
+  // Marge après le tableau : reportée sur l'item suivant via son `spaceBefore`
+  // serait plus propre, mais on l'ajoute simplement à la dernière ligne.
+  if (out.length > 0) {
+    out[out.length - 1] = { ...out[out.length - 1], height: out[out.length - 1].height + TABLE_VERTICAL_MARGIN };
+  }
   return out;
+}
+
+function layoutBlocksInternal(blocks: Block[], ctx: LayoutCtx): RenderItem[] {
+  const out: RenderItem[] = [];
+  blocks.forEach((block, i) => {
+    if (block.type === 'table') {
+      out.push(...layoutTable(block, ctx, i > 0));
+    } else {
+      out.push(...layoutOneBlock(block, ctx, i > 0));
+    }
+  });
+  return out;
+}
+
+function layoutBlocks(blocks: Block[], ctx: LayoutCtx): RenderItem[] {
+  return layoutBlocksInternal(blocks, ctx);
 }
 
 function drawLine(page: PDFPage, line: Line, boxLeft: number, baseline: number): void {
@@ -303,20 +388,74 @@ export interface DrawBoxOptions {
   defaultFontSize: number;
 }
 
+function drawTableRow(page: PDFPage, row: TableRowRender, boxLeft: number, topY: number): void {
+  // 1) Fond des cellules d'en-tête
+  let x = boxLeft + row.left;
+  row.cells.forEach((cell, i) => {
+    const w = row.columnWidths[i];
+    if (cell.isHeader) {
+      page.drawRectangle({
+        x,
+        y: topY - row.height,
+        width: w,
+        height: row.height,
+        color: TABLE_HEADER_BG,
+      });
+    }
+    x += w;
+  });
+
+  // 2) Bordures de cellules
+  x = boxLeft + row.left;
+  row.cells.forEach((_, i) => {
+    const w = row.columnWidths[i];
+    const cellTop = topY;
+    const cellBottom = topY - row.height;
+    page.drawLine({ start: { x, y: cellTop }, end: { x: x + w, y: cellTop }, thickness: TABLE_BORDER_THICKNESS, color: TABLE_BORDER_COLOR });
+    page.drawLine({ start: { x, y: cellBottom }, end: { x: x + w, y: cellBottom }, thickness: TABLE_BORDER_THICKNESS, color: TABLE_BORDER_COLOR });
+    page.drawLine({ start: { x, y: cellTop }, end: { x, y: cellBottom }, thickness: TABLE_BORDER_THICKNESS, color: TABLE_BORDER_COLOR });
+    page.drawLine({ start: { x: x + w, y: cellTop }, end: { x: x + w, y: cellBottom }, thickness: TABLE_BORDER_THICKNESS, color: TABLE_BORDER_COLOR });
+    x += w;
+  });
+
+  // 3) Texte des cellules
+  let cellLeft = boxLeft + row.left;
+  row.cells.forEach((cell, i) => {
+    const innerLeft = cellLeft + TABLE_CELL_PADDING;
+    let cursorTop = topY - TABLE_CELL_PADDING;
+    for (const line of cell.lines) {
+      cursorTop -= line.spaceBefore;
+      const baseline = cursorTop - line.ascent;
+      drawLine(page, line, innerLeft, baseline);
+      cursorTop -= line.height;
+    }
+    cellLeft += row.columnWidths[i];
+  });
+}
+
+function isTableRow(item: RenderItem): item is TableRowRender {
+  return (item as TableRowRender).kind === 'table-row';
+}
+
 /** Mode zone : dessine dans une boîte à largeur fixe. Le débordement vertical n'est PAS coupé. */
 export function drawRichTextInBox(page: PDFPage, blocks: Block[], opts: DrawBoxOptions): number {
-  const lines = layoutBlocks(blocks, {
+  const items = layoutBlocks(blocks, {
     fonts: opts.fonts,
     defaultFamily: opts.defaultFamily,
     defaultFontSize: opts.defaultFontSize,
     width: opts.width,
   });
   let cursorTop = opts.y;
-  for (const line of lines) {
-    cursorTop -= line.spaceBefore;
-    const baseline = cursorTop - line.ascent;
-    drawLine(page, line, opts.x, baseline);
-    cursorTop -= line.height;
+  for (const item of items) {
+    cursorTop -= item.spaceBefore;
+    if (isTableRow(item)) {
+      drawTableRow(page, item, opts.x, cursorTop);
+      cursorTop -= item.height;
+    } else {
+      const baseline = cursorTop - item.ascent;
+      drawLine(page, item, opts.x, baseline);
+      cursorTop -= item.height;
+    }
   }
   return cursorTop;
 }
@@ -340,7 +479,7 @@ export function drawRichTextFlow(
   const [pageW, pageH] = pageSize;
   const contentWidth = pageW - margin.left - margin.right;
 
-  const lines = layoutBlocks(blocks, {
+  const items = layoutBlocks(blocks, {
     fonts: opts.fonts,
     defaultFamily: opts.defaultFamily,
     defaultFontSize: opts.defaultFontSize,
@@ -352,16 +491,20 @@ export function drawRichTextFlow(
   pages.push(page);
   let cursorTop = pageH - margin.top;
 
-  for (const line of lines) {
-    cursorTop -= line.spaceBefore;
-    if (cursorTop - line.height < margin.bottom && cursorTop < pageH - margin.top) {
+  for (const item of items) {
+    cursorTop -= item.spaceBefore;
+    if (cursorTop - item.height < margin.bottom && cursorTop < pageH - margin.top) {
       page = pdfDoc.addPage(pageSize);
       pages.push(page);
       cursorTop = pageH - margin.top;
     }
-    const baseline = cursorTop - line.ascent;
-    drawLine(page, line, margin.left, baseline);
-    cursorTop -= line.height;
+    if (isTableRow(item)) {
+      drawTableRow(page, item, margin.left, cursorTop);
+    } else {
+      const baseline = cursorTop - item.ascent;
+      drawLine(page, item, margin.left, baseline);
+    }
+    cursorTop -= item.height;
   }
 
   return pages;

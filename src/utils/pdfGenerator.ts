@@ -1,4 +1,5 @@
 import { toast } from "sonner";
+import i18next from "i18next";
 import { parseHtmlToBlocks, collectFamilies, Block, Run } from "./pdf/parseHtml";
 import type { FlowRequest, WorkerResponse } from "./pdf/pdfWorker";
 import { PAGE_PT_TUPLE, MARGIN_PT, BODY_FONT_SIZE_PT } from "./pageGeometry";
@@ -71,7 +72,11 @@ export const generatePDFBytes = async ({ content }: { content: string }): Promis
   const isHTML = /<(p|h[1-6]|ul|ol|li|strong|em|span|div|br|table)(\s[^>]*)?>/i.test(content);
   const rawBlocks = isHTML ? parseHtmlToBlocks(content) : buildPlainTextBlocks(content);
   let end = rawBlocks.length;
-  while (end > 0 && rawBlocks[end - 1].runs.every(r => r.text.trim() === '')) end--;
+  while (
+    end > 0 &&
+    rawBlocks[end - 1].type !== 'table' &&
+    rawBlocks[end - 1].runs.every(r => r.text.trim() === '')
+  ) end--;
   const blocks = rawBlocks.slice(0, end);
   const neededFamilies = Array.from(collectFamilies(blocks));
 
@@ -154,8 +159,8 @@ export const generatePDF = async ({
     }
   } catch (error) {
     console.error('Error generating PDF:', error);
-    toast.error("Erreur lors de la génération du PDF", {
-      description: "Une erreur est survenue. Veuillez réessayer.",
+    toast.error(i18next.t("common:toasts.pdf_error"), {
+      description: i18next.t("common:toasts.pdf_error_description"),
     });
     throw error;
   }

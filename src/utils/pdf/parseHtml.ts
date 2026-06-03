@@ -12,12 +12,24 @@ export interface Run {
   highlight?: string; // couleur de fond (surlignage)
 }
 
-export type BlockType = 'paragraph' | 'heading' | 'listItem' | 'blockquote';
+export type BlockType = 'paragraph' | 'heading' | 'listItem' | 'blockquote' | 'table';
 export type Align = 'left' | 'center' | 'right' | 'justify';
 
 export interface ListMarker {
   kind: 'bullet' | 'number';
   index?: number;
+}
+
+export interface TableCellData {
+  isHeader: boolean;
+  blocks: Block[];
+}
+export interface TableRowData {
+  cells: TableCellData[];
+}
+export interface TableData {
+  rows: TableRowData[];
+  columnCount: number;
 }
 
 export interface Block {
@@ -28,6 +40,7 @@ export interface Block {
   lineHeight?: number; // multiplicateur
   headingSize?: number; // taille par défaut pour un titre
   listMarker?: ListMarker;
+  table?: TableData;
 }
 
 interface Ctx {
@@ -60,6 +73,7 @@ const QUOTE_INDENT = 16;
 const BLOCK_TAGS = new Set([
   'p', 'div', 'ul', 'ol', 'li', 'blockquote',
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  'table',
 ]);
 
 /** Convertit un éventuel markdown inline en HTML, sans toucher aux spans existants. */
@@ -236,6 +250,49 @@ function handleBlockElement(el: HTMLElement, ctx: Ctx, parentMeta: BlockMeta, bl
     return;
   }
 
+  if (tag === 'table') {
+    const rows: TableRowData[] = [];
+    let columnCount = 0;
+    // Collecte des <tr> dans thead/tbody/tfoot ou en enfants directs
+    const trs: HTMLElement[] = [];
+    const collectTr = (node: HTMLElement) => {
+      for (const c of Array.from(node.children)) {
+        const t = c.tagName.toLowerCase();
+        if (t === 'tr') trs.push(c as HTMLElement);
+        else if (t === 'thead' || t === 'tbody' || t === 'tfoot') collectTr(c as HTMLElement);
+      }
+    };
+    collectTr(el);
+    for (const tr of trs) {
+      const cells: TableCellData[] = [];
+      for (const c of Array.from(tr.children)) {
+        const t = c.tagName.toLowerCase();
+        if (t !== 'td' && t !== 'th') continue;
+        const cellBlocks: Block[] = [];
+        const cellMeta: BlockMeta = { type: 'paragraph', align: 'left', indentPx: 0 };
+        parseContainer(c as HTMLElement, { ...ctx, bold: t === 'th' ? true : ctx.bold }, cellMeta, cellBlocks);
+        // Si la cellule est vide, on ajoute un bloc paragraphe vide pour préserver la hauteur
+        if (cellBlocks.length === 0) {
+          cellBlocks.push({ type: 'paragraph', align: 'left', indentPx: 0, runs: [runFromCtx(' ', ctx)] });
+        }
+        cells.push({ isHeader: t === 'th', blocks: cellBlocks });
+      }
+      if (cells.length) {
+        rows.push({ cells });
+        if (cells.length > columnCount) columnCount = cells.length;
+      }
+    }
+    if (rows.length === 0 || columnCount === 0) return;
+    blocks.push({
+      type: 'table',
+      align: 'left',
+      indentPx,
+      runs: [],
+      table: { rows, columnCount },
+    });
+    return;
+  }
+
   if (tag === 'blockquote') {
     const meta: BlockMeta = {
       type: 'blockquote',
@@ -262,7 +319,15 @@ function handleBlockElement(el: HTMLElement, ctx: Ctx, parentMeta: BlockMeta, bl
 
   // p, div, ou tout autre conteneur de bloc
   const meta: BlockMeta = { type: 'paragraph', align, lineHeight, indentPx };
+  const before = blocks.length;
   parseContainer(el, ctx, meta, blocks);
+  // Préserver les paragraphes vides (espacement vertical du rendu web).
+  // On utilise un saut de ligne explicite : le moteur de mise en page traite
+  // '\n' comme un retour de ligne et produit une ligne vide de la bonne hauteur,
+  // alors qu'un simple espace serait ignoré (pas d'espace en début de ligne).
+  if (blocks.length === before && (tag === 'p' || tag === 'div')) {
+    blocks.push({ ...meta, runs: [runFromCtx('\n', ctx)] });
+  }
 }
 
 /** Parse du HTML Tiptap en blocs + runs portant tout le style (couleur, taille, police, etc.). */
@@ -287,6 +352,16 @@ export function parseHtmlToBlocks(html: string): Block[] {
 /** Familles de polices réellement utilisées (pour n'embarquer que le nécessaire). */
 export function collectFamilies(blocks: Block[]): Set<LogicalFamily> {
   const set = new Set<LogicalFamily>();
-  for (const b of blocks) for (const r of b.runs) set.add(r.family);
+  const walk = (bs: Block[]) => {
+    for (const b of bs) {
+      for (const r of b.runs) set.add(r.family);
+      if (b.table) {
+        for (const row of b.table.rows) {
+          for (const cell of row.cells) walk(cell.blocks);
+        }
+      }
+    }
+  };
+  walk(blocks);
   return set;
 }
