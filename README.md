@@ -4,7 +4,10 @@ A reference implementation showing how to integrate the **Vodical Document Gener
 
 > 💡 **Framework-agnostic.** The API is plain HTTPS + JSON. The PDF pipeline is plain TypeScript that runs in any modern browser (and in Node). The reference UI in this repo happens to use React + Vite, but **nothing in `src/utils/` depends on React** — you can drop those files into a vanilla JS, Vue, Svelte, Angular, jQuery, or plain `<script>` page and they'll work identically.
 
-> 📘 **Looking for the raw HTTP spec?** See [**API.md**](./API.md) — endpoints, payloads, status codes, error codes, scopes, limits, and versioning policy.
+> 📘 **Three docs, one source of truth:**
+> - [**README.md**](./README.md) — this file: integration tutorials per framework.
+> - [**API.md**](./API.md) — human-readable HTTP spec.
+> - [**openapi.yaml**](./openapi.yaml) — machine-readable OpenAPI 3.1 spec. Drop it in [Swagger UI](https://editor.swagger.io/), Postman, Insomnia, or [openapi-generator](https://openapi-generator.tech/) to scaffold an SDK in any language.
 
 ---
 

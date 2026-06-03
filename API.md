@@ -2,8 +2,11 @@
 
 Complete HTTP reference for the Vodical Document Generation API (v1).
 
-> 📘 This file is the **API spec** — endpoints, payloads, status codes, scopes, error codes.
-> For **integration tutorials** (React, Vue, Angular, vanilla JS, …), see [README.md](./README.md).
+> 📘 This file is the **human-readable API spec** — endpoints, payloads, status codes, scopes, error codes.
+>
+> Companion docs:
+> - [**README.md**](./README.md) — integration tutorials per framework.
+> - [**openapi.yaml**](./openapi.yaml) — machine-readable OpenAPI 3.1 spec. Drop it in [Swagger UI](https://editor.swagger.io/), Postman, Insomnia, or [openapi-generator](https://openapi-generator.tech/) to scaffold an SDK in any language.
 
 ---
 
