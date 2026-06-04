@@ -5,11 +5,12 @@ export default {
     extend: {
       colors: {
         primary: {
-          DEFAULT: '#0A3B62',
-          50: '#EBF5FF',
-          100: '#D6EAFF',
-          500: '#0A3B62',
-          600: '#082F4E',
+          // Vodical brand purple — matches the main app's `hsl(267 100% 33%)`.
+          DEFAULT: '#5400A8',
+          50:  '#F5EBFF', // very light purple — hover backgrounds, subtle accents
+          100: '#E6D1FF', // light purple — hover row backgrounds
+          500: '#5400A8', // brand — primary buttons / active states
+          600: '#430085', // darker — hover on primary buttons
           foreground: '#ffffff',
         },
         accent: {
