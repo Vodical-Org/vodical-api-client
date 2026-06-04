@@ -13,8 +13,8 @@ export function Setup({ onComplete, currentKey, currentUrl }: Props) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!apiKey.startsWith('vod_sk_')) {
-      toast.error('API key must start with vod_sk_');
+    if (!apiKey.startsWith('vdc_sk_')) {
+      toast.error('API key must start with vdc_sk_');
       return;
     }
     if (!baseUrl) {
@@ -40,10 +40,10 @@ export function Setup({ onComplete, currentKey, currentUrl }: Props) {
               type="password"
               value={apiKey}
               onChange={e => setApiKey(e.target.value)}
-              placeholder="vod_sk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+              placeholder="vdc_sk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
               className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
             />
-            <p className="text-xs text-slate-500 mt-1.5">Your API key from the Vodical dashboard. Starts with <code className="bg-slate-100 px-1 rounded">vod_sk_</code></p>
+            <p className="text-xs text-slate-500 mt-1.5">Your API key from the Vodical dashboard. Starts with <code className="bg-slate-100 px-1 rounded">vdc_sk_</code>.</p>
           </div>
 
           <div>

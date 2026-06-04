@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Toaster } from 'sonner';
 import { Setup } from './pages/Setup';
-import { CreateTemplate } from './pages/CreateTemplate';
+import { Templates } from './pages/Templates';
 import { GenerateDocument } from './pages/GenerateDocument';
 
 type Page = 'setup' | 'templates' | 'generate';
@@ -68,7 +68,7 @@ export default function App() {
       {/* Content */}
       <main className="max-w-6xl mx-auto px-6 py-8">
         {page === 'setup' && <Setup onComplete={handleSetup} currentKey={apiKey} currentUrl={baseUrl} />}
-        {page === 'templates' && <CreateTemplate apiKey={apiKey} baseUrl={baseUrl} />}
+        {page === 'templates' && <Templates apiKey={apiKey} baseUrl={baseUrl} />}
         {page === 'generate' && <GenerateDocument apiKey={apiKey} baseUrl={baseUrl} />}
       </main>
     </div>

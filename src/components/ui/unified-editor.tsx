@@ -21,6 +21,8 @@ import { Extension } from '@tiptap/core';
 import { cn } from '@/lib/utils';
 import { UnifiedToolbar } from './unified-toolbar';
 import DateToken from './tiptap-tokens/dateToken';
+import VariableNode from './tiptap-tokens/variableNode';
+import VariableInsertPlugin from './tiptap-tokens/variableInsertPlugin';
 
 export type ToolbarVariant = 'full' | 'medium' | 'minimal' | 'none';
 
@@ -35,6 +37,14 @@ export interface UnifiedEditorProps {
   autoFocus?: boolean;
   fontSize?: string;
   onEditorReady?: (editor: Editor) => void;
+  /**
+   * When `true`, registers the Vodical Variable extensions: the editor will
+   * recognise `<span data-vodical-variable="true">` nodes (rendered as violet
+   * chips) and show the floating "+" widget on word boundaries.
+   * Default: `false` — keeps the editor lightweight for the document-generation
+   * page that doesn't deal with templates.
+   */
+  enableVariables?: boolean;
 }
 
 function ensureHTML(raw: string): string {
@@ -68,6 +78,7 @@ export function UnifiedEditor({
   autoFocus = false,
   fontSize,
   onEditorReady,
+  enableVariables = false,
 }: UnifiedEditorProps) {
   const isEditable = editable ?? !!onChange;
   const showToolbar = isEditable && toolbar !== 'none';
@@ -76,33 +87,35 @@ export function UnifiedEditor({
 
   const initialHTML = useMemo(() => ensureHTML(content), []);
 
+  const baseExtensions = [
+    StarterKit.configure({ heading: { levels: [1, 2, 3, 4, 5, 6] } }),
+    Underline,
+    TextStyle,
+    FontFamily.configure({ types: ['textStyle'] }),
+    Color.configure({ types: ['textStyle'] }),
+    FontSize.configure({ types: ['textStyle'] }),
+    TextAlign.configure({ types: ['heading', 'paragraph'] }),
+    Highlight.configure({ multicolor: true }),
+    Link.configure({
+      openOnClick: false,
+      autolink: true,
+      linkOnPaste: true,
+      HTMLAttributes: { class: 'text-primary underline underline-offset-2' },
+    }),
+    LineHeight,
+    Indent,
+    Table.configure({ resizable: true, HTMLAttributes: { class: 'vodical-table' } }),
+    TableRow,
+    TableHeader,
+    TableCell,
+    TableActive,
+    Placeholder.configure({ placeholder }),
+    DateToken,
+    TabIndent,
+  ];
+
   const editor = useEditor({
-    extensions: [
-      StarterKit.configure({ heading: { levels: [1, 2, 3, 4, 5, 6] } }),
-      Underline,
-      TextStyle,
-      FontFamily.configure({ types: ['textStyle'] }),
-      Color.configure({ types: ['textStyle'] }),
-      FontSize.configure({ types: ['textStyle'] }),
-      TextAlign.configure({ types: ['heading', 'paragraph'] }),
-      Highlight.configure({ multicolor: true }),
-      Link.configure({
-        openOnClick: false,
-        autolink: true,
-        linkOnPaste: true,
-        HTMLAttributes: { class: 'text-primary underline underline-offset-2' },
-      }),
-      LineHeight,
-      Indent,
-      Table.configure({ resizable: true, HTMLAttributes: { class: 'vodical-table' } }),
-      TableRow,
-      TableHeader,
-      TableCell,
-      TableActive,
-      Placeholder.configure({ placeholder }),
-      DateToken,
-      TabIndent,
-    ],
+    extensions: enableVariables ? [...baseExtensions, VariableNode, VariableInsertPlugin] : baseExtensions,
     content: initialHTML,
     editable: isEditable,
     autofocus: autoFocus,

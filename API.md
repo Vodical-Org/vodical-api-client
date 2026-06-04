@@ -20,6 +20,7 @@ Complete HTTP reference for the Vodical Document Generation API (v1).
   - [`GET  /api-v1-templates` — List templates](#get--api-v1-templates)
   - [`GET  /api-v1-templates?id={id}` — Get single template](#get--api-v1-templatesidid)
   - [`POST /api-v1-templates` — Create a template](#post-api-v1-templates)
+  - [`PUT  /api-v1-templates?id={id}` — Update a template](#put--api-v1-templatesidid)
   - [`DELETE /api-v1-templates?id={id}` — Delete a template](#delete-api-v1-templatesidid)
   - [`POST /api-v1-generate` — Generate a document](#post-api-v1-generate)
 - [Common error responses](#common-error-responses)
@@ -47,7 +48,7 @@ All endpoints below are **relative to this base**. So `/api-v1-templates` actual
 Every request **must** carry a Bearer API key in the `Authorization` header:
 
 ```http
-Authorization: Bearer vod_sk_AbCdEf0123456789AbCdEf0123456789ab
+Authorization: Bearer vdc_sk_AbCdEf0123456789AbCdEf0123456789ab
 ```
 
 Failure to provide a key, or an invalid key, returns:
@@ -55,7 +56,7 @@ Failure to provide a key, or an invalid key, returns:
 | Status | Error message |
 |---|---|
 | `401` | `Missing Authorization header` |
-| `401` | `Invalid API key format. Keys must start with vod_sk_` |
+| `401` | `Invalid API key format. Keys must start with vdc_sk_` |
 | `401` | `Invalid API key` |
 | `401` | `API key has expired` |
 | `500` | `Internal authentication error` |
@@ -63,13 +64,13 @@ Failure to provide a key, or an invalid key, returns:
 ### API key format
 
 ```
-vod_sk_AbCdEf0123456789AbCdEf0123456789ab
+vdc_sk_AbCdEf0123456789AbCdEf0123456789ab
 └──┬──┘└─────────────────┬─────────────────┘
 prefix (7 chars)        random body (32 base62 chars)
 ```
 
 - The full key is **39 characters** total.
-- Stored as `SHA-256(fullKey)` server-side; only the **prefix** (first 19 chars: `vod_sk_` + 12 random chars) is stored in plain text for fast lookup.
+- Stored as `SHA-256(fullKey)` server-side; only the **prefix** (first 19 chars: `vdc_sk_` + 12 random chars) is stored in plain text for fast lookup.
 - The full key is **shown once at creation** — you cannot recover it. Lost keys must be revoked and replaced.
 - Keys can be revoked at any time via the Vodical dashboard (**Settings → API Keys**) or by setting `revoked_at` in the database.
 - Keys may have an optional `expires_at` timestamp.
@@ -82,7 +83,7 @@ Each API key carries one or more **scopes** that gate which endpoints it can cal
 | Scope | Required by |
 |---|---|
 | `templates:read` | `GET  /api-v1-templates`, `GET /api-v1-templates?id={id}` |
-| `templates:write` | `POST /api-v1-templates`, `DELETE /api-v1-templates?id={id}` |
+| `templates:write` | `POST /api-v1-templates`, `PUT /api-v1-templates?id={id}`, `DELETE /api-v1-templates?id={id}` |
 | `documents:write` | `POST /api-v1-generate` |
 
 A key without the required scope receives:
@@ -108,7 +109,7 @@ List all templates owned by the authenticated user.
 
 ```http
 GET /api-v1-templates HTTP/1.1
-Authorization: Bearer vod_sk_...
+Authorization: Bearer vdc_sk_...
 ```
 
 No request body.
@@ -154,7 +155,7 @@ Fetch a single template's full HTML body.
 
 ```http
 GET /api-v1-templates?id=a451ecdf-3899-4579-b860-e855a64d2411 HTTP/1.1
-Authorization: Bearer vod_sk_...
+Authorization: Bearer vdc_sk_...
 ```
 
 #### Response — `200 OK`
@@ -188,7 +189,7 @@ Create a new template. The HTML body is **AI-generated** server-side from your h
 
 ```http
 POST /api-v1-templates HTTP/1.1
-Authorization: Bearer vod_sk_...
+Authorization: Bearer vdc_sk_...
 Content-Type: application/json
 ```
 
@@ -243,6 +244,59 @@ See [Variable system in templates](#variable-system-in-templates).
 
 ---
 
+### `PUT  /api-v1-templates?id={id}`
+
+Update an existing template — typically used to **save edits** made in a TipTap-style editor (variables, date tokens, formatting). The full new HTML body replaces the previous one; partial updates of `name` and `language` are also supported.
+
+**Required scope:** `templates:write`
+
+#### Request
+
+```http
+PUT /api-v1-templates?id=a451ecdf-3899-4579-b860-e855a64d2411 HTTP/1.1
+Authorization: Bearer vdc_sk_...
+Content-Type: application/json
+```
+
+```json
+{
+  "html": "<h2>Compte-rendu</h2><p>Patient : <span data-vodical-variable=\"true\" data-id=\"var_x\" data-name=\"Nom\" data-variable-type=\"person-name\">[Nom]</span></p>",
+  "name": "Compte-rendu (v2)",
+  "language": "fr"
+}
+```
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `html` | string | ✅ | The full new TipTap HTML body. May contain `<span data-vodical-variable="true" …>` and `<span data-vodical-token="date" …>` nodes. |
+| `name` | string | ❌ | Renames the template. Trimmed; ignored if empty. |
+| `language` | string | ❌ | `"fr"` or `"en"`. |
+
+#### Response — `200 OK`
+
+```json
+{
+  "templateId": "a451ecdf-3899-4579-b860-e855a64d2411",
+  "name": "Compte-rendu (v2)",
+  "html": "<h2>Compte-rendu</h2><p>Patient : ...</p>",
+  "language": "fr",
+  "updatedAt": "2026-06-04T17:45:00.000Z"
+}
+```
+
+#### Errors
+
+| Status | Body | When |
+|---|---|---|
+| `400` | `{ "error": "Missing template id" }` | No `id` query parameter |
+| `400` | `{ "error": "html is required" }` | Empty or missing `html` |
+| `404` | `{ "error": "Template not found" }` | Template doesn't exist or belongs to another user |
+| `500` | `{ "error": "Failed to update template" }` | Database error |
+
+> 💡 The previous HTML is overwritten — **there is no built-in version history**. If you need an undo trail, snapshot the response of `GET /api-v1-templates?id={id}` before saving.
+
+---
+
 ### `DELETE /api-v1-templates?id={id}`
 
 Permanently delete a template.
@@ -253,7 +307,7 @@ Permanently delete a template.
 
 ```http
 DELETE /api-v1-templates?id=a451ecdf-3899-4579-b860-e855a64d2411 HTTP/1.1
-Authorization: Bearer vod_sk_...
+Authorization: Bearer vdc_sk_...
 ```
 
 #### Response — `200 OK`
@@ -283,7 +337,7 @@ The **main endpoint** — runs a template against any combination of inputs and 
 
 ```http
 POST /api-v1-generate HTTP/1.1
-Authorization: Bearer vod_sk_...
+Authorization: Bearer vdc_sk_...
 Content-Type: application/json
 ```
 

@@ -10,7 +10,7 @@ info:
     template. The HTML can be rendered as a pixel-perfect A4 PDF client-side
     with the bundled pdf-lib pipeline (see the README of the reference client).
 
-    All endpoints require a Bearer API key starting with `vod_sk_`.
+    All endpoints require a Bearer API key starting with `vdc_sk_`.
 
     Companion docs:
       - Integration tutorial: ./README.md
@@ -129,6 +129,60 @@ paths:
               example: { error: "name is required" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+    put:
+      tags: [Templates]
+      summary: Update a template (save edits from an editor)
+      description: |
+        Updates an existing template — typically used to **save edits** made in
+        a TipTap-style editor (variables, date tokens, formatting). The full
+        new HTML body replaces the previous one; partial updates of `name` and
+        `language` are also supported.
+
+        Required scope: `templates:write`
+      operationId: updateTemplate
+      parameters:
+        - name: id
+          in: query
+          required: true
+          description: UUID of the template to update.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTemplateRequest"
+            example:
+              html: "<h2>Compte-rendu</h2><p>Patient : <span data-vodical-variable=\"true\" data-id=\"var_x\" data-name=\"Nom\" data-variable-type=\"person-name\">[Nom]</span></p>"
+              name: "Compte-rendu (v2)"
+              language: fr
+      responses:
+        "200":
+          description: Template updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateTemplateResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                missing-id:   { value: { error: "Missing template id" } }
+                missing-html: { value: { error: "html is required" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Template not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: "Template not found" }
         "500": { $ref: "#/components/responses/ServerError" }
 
     delete:
@@ -281,10 +335,10 @@ components:
     apiKey:
       type: http
       scheme: bearer
-      bearerFormat: vod_sk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+      bearerFormat: vdc_sk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
       description: |
         API key issued from the Vodical dashboard (Settings → API Keys).
-        Format: `vod_sk_` followed by 32 base62 characters (39 chars total).
+        Format: `vdc_sk_` followed by 32 base62 characters (39 chars total).
 
   # ---------------------------------------------------------------------------
   # Reusable responses
@@ -298,7 +352,7 @@ components:
           schema: { $ref: "#/components/schemas/Error" }
           examples:
             missing-header:  { value: { error: "Missing Authorization header" } }
-            invalid-format:  { value: { error: "Invalid API key format. Keys must start with vod_sk_" } }
+            invalid-format:  { value: { error: "Invalid API key format. Keys must start with vdc_sk_" } }
             invalid-key:     { value: { error: "Invalid API key" } }
             expired:         { value: { error: "API key has expired" } }
 
@@ -427,6 +481,37 @@ components:
           description: Informational identifier of the AI infrastructure (HDS-hosted) that generated the template.
           example: internal-hds-ai
         createdAt:  { type: string, format: date-time }
+
+    UpdateTemplateRequest:
+      type: object
+      required: [html]
+      properties:
+        html:
+          type: string
+          description: |
+            The full new TipTap HTML body. May contain
+            `<span data-vodical-variable="true" …>` and
+            `<span data-vodical-token="date" …>` nodes. Replaces the previous
+            body in full (no partial diff).
+        name:
+          type: string
+          description: Optional new display name. Trimmed; ignored if empty.
+        language:
+          type: string
+          enum: [fr, en]
+          description: Optional new language code.
+
+    UpdateTemplateResponse:
+      type: object
+      required: [templateId, name, html, language, updatedAt]
+      properties:
+        templateId: { type: string, format: uuid }
+        name:       { type: string }
+        html:       { type: string }
+        language:
+          type: string
+          enum: [fr, en]
+        updatedAt:  { type: string, format: date-time }
 
     # Document generation -----------------------------------------------------
 
