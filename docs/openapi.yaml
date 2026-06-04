@@ -2,7 +2,7 @@ openapi: 3.1.0
 
 info:
   title: Vodical Document Generation API
-  version: "1.0.0"
+  version: "1.1.0"
   summary: Generate professional documents from text, audio, images, and PDFs.
   description: |
     The Vodical API turns any combination of inputs (raw text, audio recordings,
@@ -11,6 +11,14 @@ info:
     with the bundled pdf-lib pipeline (see the README of the reference client).
 
     All endpoints require a Bearer API key starting with `vdc_sk_`.
+
+    ## Changelog
+
+    - **1.1.0** (2026-06): Added `PUT /api-v1-templates?id={id}` to update an
+      existing template (HTML body, name, language). Useful for "save edits"
+      flows in template editors. Non-breaking.
+    - **1.0.0**: Initial public release with template CRUD (`GET`, `POST`,
+      `DELETE`) and the multi-modal `POST /api-v1-generate` endpoint.
 
     Companion docs:
       - Integration tutorial: ./README.md
