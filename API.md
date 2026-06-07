@@ -23,6 +23,7 @@ Complete HTTP reference for the Vodical Document Generation API (v1).
   - [`PUT  /api-v1-templates?id={id}` — Update a template](#put--api-v1-templatesidid)
   - [`DELETE /api-v1-templates?id={id}` — Delete a template](#delete-api-v1-templatesidid)
   - [`POST /api-v1-generate` — Generate a document](#post-api-v1-generate)
+  - [`POST /api-v1-transcribe` — Transcribe audio (no document)](#post-api-v1-transcribe)
 - [Common error responses](#common-error-responses)
 - [Variable system in templates](#variable-system-in-templates)
 - [HTML output guarantees](#html-output-guarantees)
@@ -85,6 +86,7 @@ Each API key carries one or more **scopes** that gate which endpoints it can cal
 | `templates:read` | `GET  /api-v1-templates`, `GET /api-v1-templates?id={id}` |
 | `templates:write` | `POST /api-v1-templates`, `PUT /api-v1-templates?id={id}`, `DELETE /api-v1-templates?id={id}` |
 | `documents:write` | `POST /api-v1-generate` |
+| `transcriptions:write` | `POST /api-v1-transcribe` |
 
 A key without the required scope receives:
 
@@ -454,6 +456,120 @@ X-Document-Id: {documentId}
 | `500` | `AI provider error: ...` | AI provider error |
 
 > 💡 Even when generation **fails**, a row is created in `document_requests` with `status: 'FAILED'` for auditing.
+
+---
+
+### `POST /api-v1-transcribe`
+
+Audio-only transcription. Returns the transcript as plain text and (optionally) as diarized speaker segments — **without** invoking the AI document generator and **without** requiring a `templateId`.
+
+Use this when you only need a transcription, e.g. to display it to the user, copy it to the clipboard, or feed it back into `POST /api-v1-generate` as a `text` input.
+
+**Required scope:** `transcriptions:write`
+
+> Backwards compat: API keys minted before v1.2.0 are auto-granted the new scope by the migration, so existing keys continue to work.
+
+#### Request
+
+```http
+POST /api-v1-transcribe HTTP/1.1
+Authorization: Bearer vdc_sk_...
+Content-Type: application/json
+```
+
+```json
+{
+  "audio": "<base64 of rec.m4a>",
+  "language": "fr",
+  "label": "rec.m4a",
+  "speakerLabels": true
+}
+```
+
+| Field | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `audio` | string (base64) | ✅ | — | Audio bytes encoded in standard base64 (no `data:` prefix). Any container/codec accepted by AssemblyAI works (mp3, m4a, wav, webm, ogg, flac, …). |
+| `language` | string | ❌ | `"fr"` | `"fr"` or `"en"`. Passed straight to the speech-to-text engine. |
+| `label` | string | ❌ | — | Human-readable label (e.g. `"rec.m4a"`). Stored on the audit row in `document_requests.metadata` — has no effect on quality. |
+| `speakerLabels` | boolean | ❌ | `true` | When `true`, runs speaker diarization. The response includes a grouped `speakers[]` array. Set to `false` for monologue-style audio. |
+
+#### Response — `200 OK`
+
+```json
+{
+  "transcriptionId": "8c4b0d22-44e0-4d6f-9b71-9f0db34e4c91",
+  "text": "Bonjour docteur. Bonjour, comment allez-vous ? …",
+  "speakers": [
+    { "speaker": "A", "text": "Bonjour docteur." },
+    { "speaker": "B", "text": "Bonjour, comment allez-vous ?" }
+  ],
+  "language": "fr",
+  "durationSeconds": 42,
+  "createdAt": "2026-06-04T19:20:11.000Z"
+}
+```
+
+| Field | Notes |
+|---|---|
+| `transcriptionId` | UUID of the audit row in `document_requests` for this transcription. Use it as a stable identifier for filenames, logs, or de-duplication. |
+| `text` | Plain-text transcript (no speaker prefixes). |
+| `speakers` | Array of `{ speaker, text }` segments — adjacent utterances by the same speaker are merged. Same shape as Vodical's `speakers_data` / `speaker_segments`. Empty (or omitted) when `speakerLabels` is `false` or no speakers were detected. |
+| `language` | Echoes back the language code the transcription was run with. |
+| `durationSeconds` | Duration of the audio in seconds (as reported by the engine). |
+| `createdAt` | ISO timestamp at which the transcription completed. |
+
+#### Quick example — `curl`
+
+```bash
+# Encode your audio file as base64 (macOS/Linux)
+B64=$(base64 -i rec.m4a)
+
+curl -X POST https://your-instance.supabase.co/functions/v1/api-v1-transcribe \
+  -H "Authorization: Bearer vdc_sk_..." \
+  -H "Content-Type: application/json" \
+  -d "{\"audio\":\"$B64\",\"language\":\"fr\",\"label\":\"rec.m4a\",\"speakerLabels\":true}"
+```
+
+#### Quick example — JavaScript
+
+```js
+const file = document.querySelector('input[type=file]').files[0];
+
+// Convert File -> base64 (no data: prefix)
+const buf = new Uint8Array(await file.arrayBuffer());
+let bin = '';
+for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
+const audio = btoa(bin);
+
+const res = await fetch('https://your-instance.supabase.co/functions/v1/api-v1-transcribe', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${API_KEY}`,
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({ audio, language: 'fr', label: file.name, speakerLabels: true }),
+});
+
+if (!res.ok) throw new Error((await res.json()).error);
+const { text, speakers, durationSeconds } = await res.json();
+console.log(text);
+```
+
+#### Errors
+
+| Status | Body | When |
+|---|---|---|
+| `400` | `{ "error": "audio is required (base64 string)" }` | Missing or empty `audio` |
+| `400` | `{ "error": "language must be \"fr\" or \"en\"" }` | Bad `language` |
+| `400` | `{ "error": "audio is not valid base64" }` | Decode failed |
+| `400` | `{ "error": "audio is empty" }` | Decoded to 0 bytes |
+| `403` | `{ "error": "Insufficient permissions. Required scope: transcriptions:write" }` | Missing scope |
+| `500` | `{ "error": "Audio transcription not configured" }` | STT provider not configured server-side |
+| `500` | `{ "error": "AssemblyAI upload failed: ..." }` | Upstream upload error |
+| `500` | `{ "error": "Transcription error: ..." }` | Upstream transcription error |
+| `500` | `{ "error": "Transcription timeout" }` | Audio too long or upstream stuck |
+
+> 💡 Even when transcription **fails**, a row is created in `document_requests` with `status: 'FAILED'` and `metadata.kind: 'transcription-only'` for auditing.
 
 ---
 

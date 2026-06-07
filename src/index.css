@@ -2,9 +2,22 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  /* Vodical primary blue, exposed as HSL channels so it can be consumed by
+     the same `hsl(var(--primary))` pattern used in the main Vodical app. */
+  --primary: 213 80% 22%;
+}
+
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   background: #f8fafc;
+}
+
+/* Triple-circle "transcription in progress" animation
+   (used by GenerateDocument.tsx — same SVGs as Vodical). */
+@keyframes pulse-breathing {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.06); }
 }
 
 /* ──────────────────────────────────────────────────────────────────────────

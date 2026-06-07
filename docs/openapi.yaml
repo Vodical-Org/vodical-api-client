@@ -2,7 +2,7 @@ openapi: 3.1.0
 
 info:
   title: Vodical Document Generation API
-  version: "1.1.0"
+  version: "1.2.0"
   summary: Generate professional documents from text, audio, images, and PDFs.
   description: |
     The Vodical API turns any combination of inputs (raw text, audio recordings,
@@ -14,6 +14,10 @@ info:
 
     ## Changelog
 
+    - **1.2.0** (2026-06): Added `POST /api-v1-transcribe` for audio-only
+      transcription (no AI document generation, no template required).
+      Returns plain text plus optional speaker segments. New scope
+      `transcriptions:write` is auto-granted to existing keys (non-breaking).
     - **1.1.0** (2026-06): Added `PUT /api-v1-templates?id={id}` to update an
       existing template (HTML body, name, language). Useful for "save edits"
       flows in template editors. Non-breaking.
@@ -41,6 +45,8 @@ tags:
     description: Manage document templates (the structure used to fill in inputs).
   - name: Documents
     description: Generate documents from a template + inputs.
+  - name: Transcriptions
+    description: Speech-to-text on raw audio (no AI document generation).
 
 # =============================================================================
 # Paths
@@ -334,6 +340,86 @@ paths:
                 error: "Template a451ecdf-3899-4579-b860-e855a64d2411 does not exist"
         "500": { $ref: "#/components/responses/ServerError" }
 
+  /api-v1-transcribe:
+    post:
+      tags: [Transcriptions]
+      summary: Transcribe an audio file (no AI document generation)
+      description: |
+        Audio-only transcription endpoint. Uploads the provided audio to the
+        internal HDS-hosted speech-to-text engine and returns the transcript
+        as plain text (and, when `speakerLabels` is enabled, as an array of
+        diarized segments matching Vodical's `speakers_data` shape).
+
+        This endpoint does **not** invoke the AI document generator and does
+        **not** require a `templateId`. Use it when you only need a
+        transcript, e.g. to display it to the user, copy it to the clipboard,
+        or feed it back as a `text` input into `POST /api-v1-generate`.
+
+        Audio is processed up to 5 min by default. Supported input encodings:
+        any container/codec accepted by AssemblyAI (mp3, m4a, wav, webm,
+        ogg, flac, …) — pass the raw bytes base64-encoded.
+
+        Required scope: `transcriptions:write`
+
+        > Backwards compat: API keys minted before v1.2.0 also work — they
+        > were auto-granted the new scope by the migration.
+      operationId: transcribeAudio
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TranscribeRequest"
+            example:
+              audio: "<base64 of rec.m4a>"
+              language: fr
+              label: rec.m4a
+              speakerLabels: true
+      responses:
+        "200":
+          description: Transcription succeeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TranscribeResponse"
+              example:
+                transcriptionId: 8c4b0d22-44e0-4d6f-9b71-9f0db34e4c91
+                text: "Bonjour docteur. Bonjour, comment allez-vous ? …"
+                speakers:
+                  - { speaker: "A", text: "Bonjour docteur." }
+                  - { speaker: "B", text: "Bonjour, comment allez-vous ?" }
+                language: fr
+                durationSeconds: 42
+                createdAt: "2026-06-04T19:20:11.000Z"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                missing-audio:    { value: { error: "audio is required (base64 string)" } }
+                invalid-language: { value: { error: 'language must be "fr" or "en"' } }
+                invalid-base64:   { value: { error: "audio is not valid base64" } }
+                empty-audio:      { value: { error: "audio is empty" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: Forbidden (insufficient scope)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example:
+                error: "Insufficient permissions. Required scope: transcriptions:write"
+        "500":
+          description: Internal server error (STT not configured / AssemblyAI failure / timeout)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                stt-not-configured: { value: { error: "Audio transcription not configured" } }
+                upload-failed:      { value: { error: "AssemblyAI upload failed: 502" } }
+                transcribe-error:   { value: { error: "Transcription error: invalid audio" } }
+                timeout:            { value: { error: "Transcription timeout" } }
+
 # =============================================================================
 # Components
 # =============================================================================
@@ -621,3 +707,87 @@ components:
           example:
             rec.m4a: "Bonjour docteur, ça va bien..."
             labs.pdf: "Hémoglobine: 14 g/dL..."
+
+    # Transcriptions ----------------------------------------------------------
+
+    SpeakerSegment:
+      type: object
+      required: [speaker, text]
+      properties:
+        speaker:
+          type: string
+          description: |
+            Diarization label assigned by the speech-to-text engine — typically
+            a single uppercase letter (`"A"`, `"B"`, `"C"`, …). Adjacent
+            utterances by the same speaker are merged into a single segment.
+          example: A
+        text:
+          type: string
+          description: Concatenated text spoken by this speaker for the segment.
+          example: Bonjour docteur, comment allez-vous ?
+
+    TranscribeRequest:
+      type: object
+      required: [audio]
+      properties:
+        audio:
+          type: string
+          format: byte
+          description: |
+            Base64-encoded audio bytes (no `data:` prefix). Any container/codec
+            accepted by AssemblyAI works (mp3, m4a, wav, webm, ogg, flac, …).
+        language:
+          type: string
+          enum: [fr, en]
+          default: fr
+          description: ISO language code passed to the speech-to-text engine.
+        label:
+          type: string
+          description: |
+            Optional human-readable label (e.g. `"rec.m4a"`). Stored on the
+            audit row in `document_requests.metadata`. Has no effect on
+            transcription quality.
+          example: rec.m4a
+        speakerLabels:
+          type: boolean
+          default: true
+          description: |
+            When `true`, runs speaker diarization. The response includes a
+            grouped `speakers[]` array (one entry per consecutive run by the
+            same speaker). Set to `false` for monologue-style audio to save a
+            small amount of processing time.
+
+    TranscribeResponse:
+      type: object
+      required: [transcriptionId, text, language, durationSeconds, createdAt]
+      properties:
+        transcriptionId:
+          type: string
+          format: uuid
+          description: |
+            UUID of the audit row in `document_requests` for this transcription.
+            Use it as a stable identifier for filenames, logs, or de-duplication.
+        text:
+          type: string
+          description: Plain-text transcript (no speaker prefixes).
+        speakers:
+          type: array
+          description: |
+            Diarized segments, present when `speakerLabels` was `true` and the
+            engine detected at least one speaker. Same shape as Vodical's
+            `speakers_data` / `speaker_segments`. Empty (or omitted) for
+            speakerless results.
+          items:
+            $ref: "#/components/schemas/SpeakerSegment"
+        language:
+          type: string
+          enum: [fr, en]
+          description: Echoes back the language code the transcription was run with.
+        durationSeconds:
+          type: number
+          description: Duration of the audio in seconds (as reported by the engine).
+          example: 42.7
+        createdAt:
+          type: string
+          format: date-time
+          description: ISO timestamp at which the transcription completed.
