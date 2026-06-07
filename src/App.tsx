@@ -65,8 +65,17 @@ export default function App() {
         </div>
       </header>
 
-      {/* Content */}
-      <main className="max-w-6xl mx-auto px-6 py-8">
+      {/* Content
+          The Templates page hosts a side-by-side template editor (sidebar +
+          A4 sheet + variables panel), so we let it use a much wider canvas.
+          Setup and Generate remain centered at max-w-6xl as before. */}
+      <main
+        className={`mx-auto py-8 ${
+          page === 'templates'
+            ? 'max-w-screen-2xl px-4'
+            : 'max-w-6xl px-6'
+        }`}
+      >
         {page === 'setup' && <Setup onComplete={handleSetup} currentKey={apiKey} currentUrl={baseUrl} />}
         {page === 'templates' && <Templates apiKey={apiKey} baseUrl={baseUrl} />}
         {page === 'generate' && <GenerateDocument apiKey={apiKey} baseUrl={baseUrl} />}

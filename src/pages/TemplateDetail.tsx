@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { Pencil, Save, X, Loader2 } from 'lucide-react';
 import type { Editor } from '@tiptap/react';
 import { UnifiedEditor } from '../components/ui/unified-editor';
+import { A4Sheet } from '../components/ui/A4Sheet';
 import { VariableSelectionProvider, useVariableSelection } from '../components/ui/tiptap-tokens/variableSelectionContext';
 import { VariableAddPanel } from '../components/ui/tiptap-tokens/VariableAddPanel';
 import { VariableConfigPanel } from '../components/ui/tiptap-tokens/VariableConfigPanel';
@@ -188,17 +189,22 @@ function TemplateDetailInner({ apiKey, baseUrl, templateId, onUpdated }: Props) 
       {/* ── Body ───────────────────────────────────────────────────── */}
       {editing ? (
         <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-4 flex-1 min-h-[600px]">
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-            <UnifiedEditor
-              content={html ?? ''}
-              onChange={setHtml}
-              editable
-              toolbar="full"
-              enableVariables
-              className="h-full min-h-[600px]"
-              contentClassName="min-h-[560px]"
-              onEditorReady={(editor) => { editorRef.current = editor; }}
-            />
+          {/* Gray "desktop" background; the A4 sheet (794 px) is centered and
+              scaled down on narrow viewports so the layout never looks
+              squeezed when the variable panel is open. */}
+          <div className="bg-slate-100 rounded-xl border border-slate-200 p-6 overflow-y-auto max-h-[80vh]">
+            <A4Sheet className="mx-auto" withMargins={false} maxScale={1.25}>
+              <UnifiedEditor
+                content={html ?? ''}
+                onChange={setHtml}
+                editable
+                toolbar="full"
+                enableVariables
+                className="!border-0 !ring-0 !shadow-none !rounded-none !bg-transparent"
+                contentClassName="[&_.ProseMirror]:px-[96px] [&_.ProseMirror]:py-[96px]"
+                onEditorReady={(editor) => { editorRef.current = editor; }}
+              />
+            </A4Sheet>
           </div>
 
           <aside className="bg-white rounded-xl border border-slate-200 overflow-hidden h-[640px] flex flex-col">
@@ -222,17 +228,21 @@ function TemplateDetailInner({ apiKey, baseUrl, templateId, onUpdated }: Props) 
           </aside>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden flex-1">
+        <div className="bg-slate-100 rounded-xl border border-slate-200 p-6 overflow-y-auto max-h-[80vh] flex-1">
           {/* Read-only preview rendered with the same editor (TipTap) so dates
-              and variable chips look identical to the edit view, just locked. */}
-          <UnifiedEditor
-            content={html ?? ''}
-            editable={false}
-            toolbar="none"
-            enableVariables
-            className="h-full min-h-[600px] border-0"
-            contentClassName="min-h-[600px]"
-          />
+              and variable chips look identical to the edit view, just locked.
+              Wrapped in <A4Sheet> so it always has the same A4 width as in the
+              PDF export. */}
+          <A4Sheet className="mx-auto">
+            <UnifiedEditor
+              content={html ?? ''}
+              editable={false}
+              toolbar="none"
+              enableVariables
+              className="!border-0 !ring-0 !shadow-none !rounded-none !bg-transparent"
+              contentClassName="[&_.ProseMirror]:p-0"
+            />
+          </A4Sheet>
         </div>
       )}
     </div>

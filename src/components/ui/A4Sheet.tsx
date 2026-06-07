@@ -25,9 +25,16 @@ interface A4SheetProps {
   className?: string;
   /** Apply the standard 2.54 cm inner padding. Default true. */
   withMargins?: boolean;
+  /**
+   * Maximum scale applied when the wrapper is wider than 794 px.
+   * Default is `1` (the sheet keeps its real A4 CSS size). Pass e.g. `1.5`
+   * to let the sheet grow up to 1.5× on large monitors so the text is more
+   * legible — proportions are preserved (uniform CSS transform: scale(...)).
+   */
+  maxScale?: number;
 }
 
-export function A4Sheet({ children, className, withMargins = true }: A4SheetProps) {
+export function A4Sheet({ children, className, withMargins = true, maxScale = 1 }: A4SheetProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
 
@@ -41,7 +48,7 @@ export function A4Sheet({ children, className, withMargins = true }: A4SheetProp
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
         if (!wrapper.isConnected || !sheet.isConnected) return;
-        const scale = Math.min(1, wrapper.clientWidth / A4_WIDTH_PX);
+        const scale = Math.min(maxScale, wrapper.clientWidth / A4_WIDTH_PX);
         sheet.style.setProperty('--a4-scale', String(scale));
 
         // Wrapper height = scaled content height
@@ -64,7 +71,7 @@ export function A4Sheet({ children, className, withMargins = true }: A4SheetProp
       mo.disconnect();
       cancelAnimationFrame(raf);
     };
-  }, []);
+  }, [maxScale]);
 
   return (
     <div ref={wrapperRef} className={cn('w-full overflow-hidden', className)}>
